@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronRight, Globe2, Flag, History, Crown, Check, XCircle } from "lucide-react";
+import { ChevronRight, Globe2, Flag, History, Crown, Check, XCircle, Coins } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
@@ -11,6 +11,83 @@ import { MOCK_ASSETS } from "../../data/mock_assets";
 export type Country = "France" | "Britain" | "Russia" | "Austria-Hungary" | "German Empire";
 
 type Phase = "Action" | "Events";
+
+// ---- Integer market types ----
+type MarketGoodKey =
+  | "Grain"
+  | "Coal"
+  | "Iron"
+  | "Timber"
+  | "Cotton"
+  | "Steel"
+  | "Textiles"
+  | "Artillery";
+
+type MarketGood = {
+  key: MarketGoodKey;
+  min: number;   // integer
+  base: number;  // integer
+  max: number;   // integer
+  ladder: readonly number[]; // exactly 10 integer steps, ascending, duplicates allowed
+};
+
+// 10-point ladders (all integers). Duplicates used for cheaper goods.
+const MARKET_GOODS: Record<MarketGoodKey, MarketGood> = {
+  Grain: {
+    key: "Grain",
+    min: 1, base: 3, max: 5,
+    ladder: [1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+  },
+  Coal: {
+    key: "Coal",
+    min: 2, base: 6, max: 12,
+    ladder: [2, 3, 4, 5, 6, 7, 8, 9, 10, 12],
+  },
+  Iron: {
+    key: "Iron",
+    min: 2, base: 5, max: 10,
+    ladder: [2, 3, 4, 5, 6, 7, 8, 9, 10, 10],
+  },
+  Timber: {
+    key: "Timber",
+    min: 1, base: 3, max: 6,
+    ladder: [1, 2, 2, 3, 3, 4, 4, 5, 5, 6],
+  },
+  Cotton: {
+    key: "Cotton",
+    min: 3, base: 7, max: 12,
+    ladder: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  },
+  Steel: {
+    key: "Steel",
+    min: 5, base: 9, max: 16,
+    ladder: [5, 6, 7, 8, 9, 10, 11, 12, 14, 16],
+  },
+  Textiles: {
+    key: "Textiles",
+    min: 3, base: 6, max: 10,
+    ladder: [3, 4, 5, 6, 7, 8, 9, 10, 10, 10],
+  },
+  Artillery: {
+    key: "Artillery",
+    min: 10, base: 20, max: 30,
+    ladder: [10, 12, 14, 16, 18, 20, 22, 24, 26, 30],
+  },
+};
+
+// current market uses an index into the ladder + lastIndex to compute Δ (integer)
+type MarketState = Record<MarketGoodKey, { index: number; lastIndex: number }>;
+
+function closestIndex(ladder: readonly number[], target: number) {
+  let best = 0;
+  let diff = Math.abs(ladder[0] - target);
+  for (let i = 1; i < ladder.length; i++) {
+    const d = Math.abs(ladder[i] - target);
+    if (d < diff) { best = i; diff = d; }
+  }
+  return best;
+}
+
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
 const ACTIONS = ["Build", "Operate", "Trade", "Colonize", "Campaign", "Pass"] as const;
@@ -47,6 +124,7 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
   // controls the Action Log overlay
   const [showLog, setShowLog] = useState(false);
 
+
   const [prestige] = useState<Record<Country, number>>(INITIAL_PRESTIGE);
   const [passed, setPassed] = useState<Record<Country, boolean>>({
     Britain: false,
@@ -72,6 +150,42 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
 
   // Pending action selection (for asset-targeted actions)
   const [pendingAction, setPendingAction] = useState<ActionType | null>(null);
+
+  // Market state: indices on the 10-step ladders (integers everywhere)
+const [market, setMarket] = useState<MarketState>(() => {
+  const entries = Object.values(MARKET_GOODS).map((g) => {
+    const idx = closestIndex(g.ladder, g.base);
+    return [g.key, { index: idx, lastIndex: idx }] as const;
+  });
+  return Object.fromEntries(entries) as MarketState;
+});
+
+// Derived rows for the UI table
+const marketRows = useMemo(
+  () =>
+    (Object.keys(MARKET_GOODS) as MarketGoodKey[]).map((k) => {
+      const g = MARKET_GOODS[k];
+      const s = market[k];
+      const price = g.ladder[s.index];                // integer
+      const last = g.ladder[s.lastIndex];             // integer
+      const delta = price - last;                     // integer change
+      const level = s.index + 1;                      // 1..10
+      return { key: k, price, delta, level, min: g.min, base: g.base, max: g.max };
+    }),
+  [market]
+);
+
+// (Optional) API to nudge a price up/down by steps (e.g., future Events/Operate effects)
+/*
+function nudgePrice(key: MarketGoodKey, steps: number) {
+  setMarket((prev) => {
+    const s = prev[key];
+    const g = MARKET_GOODS[key];
+    const nextIndex = Math.min(9, Math.max(0, s.index + steps));
+    return { ...prev, [key]: { index: nextIndex, lastIndex: s.index } };
+  });
+}*/
+
 
   // Order is by ascending prestige at the START of a round
   const order = useMemo<Country[]>(() => {
@@ -299,12 +413,7 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
 
       <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_360px] gap-4 p-4">
         {/* Left: Turn Order & Prestige */}
-        <TurnOrderPanel
-          order={order}
-          current={currentCountry}
-          passed={passed}
-          prestige={prestige}
-        />
+        <WorldMarketPanel rows={marketRows} />
 
         {/* Center: Either Action Log, Events, or Asset Picker */}
         {phase === "Events" ? (
@@ -324,13 +433,23 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
         )}
 
         {/* Right: Actions */}
-        <ActionsPanel
-          disabled={phase !== "Action" || passed[currentCountry]}
-          current={currentCountry}
-          onPick={performActionClick}
-          used={usedActions[currentCountry]}
-          isHuman={currentCountry === selectedCountry}
-        />
+        <div className="space-y-4 xl:h-[calc(100vh-96px)]">
+          <ActionsPanel
+            disabled={phase !== "Action" || passed[currentCountry]}
+            current={currentCountry}
+            onPick={performActionClick}
+            used={usedActions[currentCountry]}
+            isHuman={currentCountry === selectedCountry}
+          />
+
+          <TurnOrderPanel
+            order={order}
+            current={currentCountry}
+            passed={passed}
+            prestige={prestige}
+          />
+        </div>
+
       </div>
     </div>
     {showLog && <ActionLogOverlay log={log} onClose={() => setShowLog(false)} />}
@@ -660,4 +779,55 @@ function ActionLogOverlay({
     </div>
   );
 }
+
+function WorldMarketPanel({
+  rows,
+}: {
+  rows: {
+    key: MarketGoodKey;
+    price: number;
+    level: number;
+    min: number;
+    base: number;
+    max: number;
+  }[];
+}) {
+  return (
+    <Card className="shadow-sm xl:h-[calc(100vh-96px)]">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2">
+          <Coins className="h-5 w-5" /> World Market
+        </CardTitle>
+        <CardDescription>Integer price ladder</CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ScrollArea className="h-[620px] pr-2">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-slate-500">
+                <th className="font-medium py-1 text-left">Good</th>
+                <th className="font-medium py-1 text-right">Price (£)</th>
+                <th className="font-medium py-1 text-right">Level</th>
+                <th className="font-medium py-1 text-right whitespace-nowrap">Min • Base • Max</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.key} className="border-b last:border-b-0">
+                  <td className="py-2 text-left">{r.key}</td>
+                  <td className="py-2 tabular-nums text-right">{r.price}</td>
+                  <td className="py-2 tabular-nums text-right">{r.level}</td>
+                  <td className="py-2 text-slate-500 tabular-nums text-right">
+                    {r.min} • {r.base} • {r.max}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </ScrollArea>
+      </CardContent>
+    </Card>
+  );
+}
+
 
