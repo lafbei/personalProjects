@@ -1,3 +1,4 @@
+// src/components/Assets.tsx
 import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { Button } from "./ui/button";
@@ -102,14 +103,21 @@ function statusLabel(s: AssetStatus) {
 export type AssetCardProps = {
   asset: Asset;
   currentCountry: CountryName;
-  // Turn-logic integration via callbacks (GameView will decide legality / consume action points)
+
+  // Action callbacks (optional; if not provided, button will be disabled/hidden)
   onBuild?: (id: string) => void;
   onColonize?: (id: string) => void;
   onConquer?: (id: string) => void;
   onOperate?: (id: string) => void;
   onUpgrade?: (id: string) => void;
-  // Optional external disabling (e.g., if a different action was chosen this activation)
+
+  // Optional external disabling (e.g., different action was chosen)
   disabledReason?: string;
+
+  // NEW: selection-mode helpers (used by AssetsPanel when choosing Operate)
+  hideActions?: boolean; // hide the action buttons row
+  selectable?: boolean; // style as clickable
+  onCardClick?: () => void; // whole-card click handler
 };
 
 export default function AssetCard({
@@ -121,6 +129,9 @@ export default function AssetCard({
   onOperate,
   onUpgrade,
   disabledReason,
+  hideActions,
+  selectable,
+  onCardClick,
 }: AssetCardProps) {
   const isOwnedByMe = asset.owner === currentCountry;
   const isNeutral = asset.owner === null;
@@ -140,9 +151,30 @@ export default function AssetCard({
   const canUpgrade = isOwnedByMe && asset.status === "Operational" && !!onUpgrade;
 
   const globallyDisabled = !!disabledReason;
+  const clickable = Boolean(selectable && onCardClick);
 
   return (
-    <Card className="shadow-sm">
+    <Card
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onClick={clickable ? onCardClick : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onCardClick?.();
+              }
+            }
+          : undefined
+      }
+      className={[
+        "shadow-sm transition",
+        clickable
+          ? "cursor-pointer ring-1 ring-slate-200 hover:ring-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-400"
+          : "",
+      ].join(" ")}
+    >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2">
@@ -160,6 +192,7 @@ export default function AssetCard({
           <span>Status: {statusLabel(asset.status)}</span>
         </CardDescription>
       </CardHeader>
+
       <CardContent className="space-y-3">
         {/* Production */}
         {asset.production && (
@@ -211,70 +244,62 @@ export default function AssetCard({
           </div>
         )}
 
-        {/* Actions */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-          <Button
-            disabled={globallyDisabled || !canBuild}
-            onClick={() => onBuild && onBuild(asset.id)}
-            title={disabledReason || (canBuild ? "Build this asset" : "Can't build now")}
-            className="rounded-2xl"
-          >
-            <Hammer className="h-4 w-4 mr-2" /> Build
-          </Button>
+        {/* Actions (hidden in selection mode) */}
+        {!hideActions && (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            <Button
+              disabled={globallyDisabled || !canBuild}
+              onClick={() => onBuild && onBuild(asset.id)}
+              title={disabledReason || (canBuild ? "Build this asset" : "Can't build now")}
+              className="rounded-2xl"
+            >
+              <Hammer className="h-4 w-4 mr-2" /> Build
+            </Button>
 
-          <Button
-            variant="secondary"
-            disabled={globallyDisabled || !canOperate}
-            onClick={() => onOperate && onOperate(asset.id)}
-            title={disabledReason || (canOperate ? "Operate this asset" : "Can't operate now")}
-            className="rounded-2xl"
-          >
-            <Factory className="h-4 w-4 mr-2" /> Operate
-          </Button>
+            <Button
+              variant="secondary"
+              disabled={globallyDisabled || !canOperate}
+              onClick={() => onOperate && onOperate(asset.id)}
+              title={disabledReason || (canOperate ? "Operate this asset" : "Can't operate now")}
+              className="rounded-2xl"
+            >
+              <Factory className="h-4 w-4 mr-2" /> Operate
+            </Button>
 
-          <Button
-            variant="outline"
-            disabled={globallyDisabled || !canColonize}
-            onClick={() => onColonize && onColonize(asset.id)}
-            title={disabledReason || (canColonize ? "Advance colonization" : "Can't colonize now")}
-            className="rounded-2xl"
-          >
-            <MapPinned className="h-4 w-4 mr-2" /> Colonize
-          </Button>
+            <Button
+              variant="outline"
+              disabled={globallyDisabled || !canColonize}
+              onClick={() => onColonize && onColonize(asset.id)}
+              title={
+                disabledReason || (canColonize ? "Advance colonization" : "Can't colonize now")
+              }
+              className="rounded-2xl"
+            >
+              <MapPinned className="h-4 w-4 mr-2" /> Colonize
+            </Button>
 
-          <Button
-            variant="destructive"
-            disabled={globallyDisabled || !canConquer}
-            onClick={() => onConquer && onConquer(asset.id)}
-            title={disabledReason || (canConquer ? "Attempt conquest" : "Can't conquer now")}
-            className="rounded-2xl"
-          >
-            <Swords className="h-4 w-4 mr-2" /> Campaign
-          </Button>
+            <Button
+              variant="destructive"
+              disabled={globallyDisabled || !canConquer}
+              onClick={() => onConquer && onConquer(asset.id)}
+              title={disabledReason || (canConquer ? "Attempt conquest" : "Can't conquer now")}
+              className="rounded-2xl"
+            >
+              <Swords className="h-4 w-4 mr-2" /> Campaign
+            </Button>
 
-          <Button
-            variant="outline"
-            disabled={globallyDisabled || !canUpgrade}
-            onClick={() => onUpgrade && onUpgrade(asset.id)}
-            title={disabledReason || (canUpgrade ? "Upgrade this asset" : "Can't upgrade now")}
-            className="rounded-2xl"
-          >
-            Upgrade
-          </Button>
-        </div>
+            <Button
+              variant="outline"
+              disabled={globallyDisabled || !canUpgrade}
+              onClick={() => onUpgrade && onUpgrade(asset.id)}
+              title={disabledReason || (canUpgrade ? "Upgrade this asset" : "Can't upgrade now")}
+              className="rounded-2xl"
+            >
+              Upgrade
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
 }
-
-// ---------------- Mock Data (optional for quick testing) ----------------
-// Moved MOCK_ASSETS to a separate file 'mockAssets.ts' to enable Fast Refresh compatibility.
-
-// ---------------- Example usage ----------------
-// import { MOCK_ASSETS } from "./mockAssets";
-// <AssetCard
-//   asset={MOCK_ASSETS[0]}
-//   currentCountry="German Empire"
-//   onOperate={(id) => console.log("Operate", id)}
-//   onUpgrade={(id) => console.log("Upgrade", id)}
-// />

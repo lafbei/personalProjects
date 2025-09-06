@@ -12,12 +12,16 @@ export default function ColonizeOptionsPanel({ player, options, onColonize, onCl
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-semibold">Colonize • Plantations</h2>
-        <button className="px-3 py-1 rounded-lg border" onClick={onClose}>Close</button>
+        <button className="px-3 py-1 rounded-lg border" onClick={onClose}>
+          Close
+        </button>
       </div>
-      <p className="text-sm opacity-80">Gold: <span className="font-mono">{player.gold}</span></p>
+      <p className="text-sm opacity-80">
+        Gold: <span className="font-mono">{player.gold}</span>
+      </p>
 
       <ul className="grid gap-3">
-        {options.map(p => (
+        {options.map((p) => (
           <li key={p.id} className="border rounded-xl p-3 flex items-center justify-between">
             <div>
               <div className="font-medium">{p.name}</div>

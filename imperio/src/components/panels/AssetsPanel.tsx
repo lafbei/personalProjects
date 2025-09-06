@@ -3,7 +3,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui
 import { ScrollArea } from "../ui/scroll-area";
 import { XCircle } from "lucide-react";
 import AssetCard, { type Asset as AssetType } from "../Asset";
-import type { Country } from "../GameView"; // or import your Country type from wherever it lives
+import type { Country } from "../GameView";
+
 type ActionType = "Build" | "Operate" | "Colonize" | "Campaign" | "Congress";
 
 export default function AssetsPanel({
@@ -20,22 +21,16 @@ export default function AssetsPanel({
   onChoose: (action: Exclude<ActionType, "Congress">, a: AssetType) => void;
 }) {
   const mine = assets.filter((a) => a.owner === actor);
-
-  const callbacksFor = (a: AssetType) => {
-    if (pendingAction === "Operate") return { onOperate: () => onChoose("Operate", a) };
-    return {};
-  };
+  const isOperate = pendingAction === "Operate";
 
   return (
     <Card className="shadow-sm xl:h-[calc(100vh-96px)] overflow-hidden">
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>
-              {pendingAction === "Operate" ? "Select asset to Operate" : "Assets"}
-            </CardTitle>
+            <CardTitle>{isOperate ? "Select asset to Operate" : "Assets"}</CardTitle>
             <CardDescription>
-              {pendingAction === "Operate"
+              {isOperate
                 ? "Choose one of your assets to operate."
                 : "Only your current holdings are shown."}
             </CardDescription>
@@ -47,11 +42,19 @@ export default function AssetsPanel({
           )}
         </div>
       </CardHeader>
+
       <CardContent>
         <ScrollArea className="h-[620px] pr-2">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {mine.map((a) => (
-              <AssetCard key={a.id} asset={a} currentCountry={actor} {...callbacksFor(a)} />
+              <AssetCard
+                key={a.id}
+                asset={a}
+                currentCountry={actor}
+                hideActions={isOperate}
+                selectable={isOperate}
+                onCardClick={isOperate ? () => onChoose("Operate", a) : undefined}
+              />
             ))}
             {mine.length === 0 && <div className="text-sm text-slate-500">No assets yet.</div>}
           </div>

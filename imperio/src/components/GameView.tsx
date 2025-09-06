@@ -97,6 +97,62 @@ const MARKET_GOODS: Record<MarketGoodKey, MarketGood> = {
 // current market uses an index into the ladder + lastIndex to compute Δ (integer)
 type MarketState = Record<MarketGoodKey, { index: number; lastIndex: number }>;
 
+// --- Operation helpers ---
+type GoodsMap = Partial<Record<MarketGoodKey, number>>;
+
+function priceOf(key: MarketGoodKey, st: MarketState): number {
+  const g = MARKET_GOODS[key];
+  const s = st[key];
+  return g.ladder[s.index];
+}
+
+function clampIndex(i: number) {
+  return Math.max(0, Math.min(9, i));
+}
+
+// Convert an Asset.production map to MarketGoodKey map (keys match by name)
+function normalizeGoodsMap(map?: Partial<Record<string, number>>): GoodsMap {
+  if (!map) return {};
+  const out: GoodsMap = {};
+  for (const [k, v] of Object.entries(map)) {
+    if (k in MARKET_GOODS) out[k as MarketGoodKey] = Math.trunc(v ?? 0);
+  }
+  return out;
+}
+
+function sumAtCurrentPrices(map: GoodsMap | undefined, st: MarketState): number {
+  if (!map) return 0;
+  let total = 0;
+  for (const [k, qty] of Object.entries(map) as [MarketGoodKey, number][]) {
+    if (!qty) continue;
+    total += priceOf(k, st) * qty;
+  }
+  return total;
+}
+
+function applyMarketShifts(
+  prev: MarketState,
+  inputs: GoodsMap | undefined,
+  outputs: GoodsMap | undefined
+): MarketState {
+  // Compute net shift per good (inputs +1, outputs -1)
+  const net: Partial<Record<MarketGoodKey, number>> = {};
+  for (const k of Object.keys(inputs ?? {}) as MarketGoodKey[]) {
+    net[k] = (net[k] ?? 0) + 1;
+  }
+  for (const k of Object.keys(outputs ?? {}) as MarketGoodKey[]) {
+    net[k] = (net[k] ?? 0) - 1;
+  }
+
+  const next: MarketState = { ...prev };
+  for (const [k, d] of Object.entries(net) as [MarketGoodKey, number][]) {
+    if (!d) continue;
+    const cur = next[k];
+    next[k] = { index: clampIndex(cur.index + d), lastIndex: cur.index };
+  }
+  return next;
+}
+
 // Fixed turn order
 const FIXED_ORDER: Country[] = ["Austria-Hungary", "France", "Britain", "German Empire", "Russia"];
 
@@ -263,6 +319,42 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
   function finalizeAssetAction(action: Exclude<ActionType, "Congress">, target: AssetType) {
     const actor = currentCountry;
 
+    // --- NEW: handle Operate economics & market ---
+    if (action === "Operate") {
+      const prod = target.production ?? {};
+      const inputs = normalizeGoodsMap(prod.inputs);
+      const outputs = normalizeGoodsMap(prod.outputs);
+
+      // Compute cost/revenue at current prices (before we move the market)
+      const cost = sumAtCurrentPrices(inputs, market);
+      const revenue = sumAtCurrentPrices(outputs, market);
+
+      // Try to pay for inputs
+      if (!spendGold(actor, cost)) {
+        setLog((L) => [
+          {
+            country: actor,
+            action,
+            targetId: target.id,
+            targetName: target.name,
+            ts: Date.now(),
+            note: `Insufficient gold to buy inputs (needs £${cost}).`,
+          },
+          ...L,
+        ]);
+        // Do not advance the turn or clear selection
+        return;
+      }
+
+      // Earn from selling outputs
+      if (revenue > 0) earnGold(actor, revenue);
+
+      // Move market: inputs up +1 level, outputs down −1 level (per good, not per unit)
+      setMarket((prev) => applyMarketShifts(prev, inputs, outputs));
+      // fall through to VP/log/turn-advance below
+    }
+
+    // --- existing asset state updates (unchanged) ---
     setAssets((prev) =>
       prev.map((a) => {
         if (a.id !== target.id) return a;
@@ -271,7 +363,7 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
           return { ...a, owner: actor, status: "Operational", level: a.level > 0 ? a.level : 1 };
         }
         if (action === "Operate") {
-          return a; // production effects later
+          return a; // production handled above
         }
         if (action === "Colonize" && a.colonization) {
           const next = a.colonization.progress + 1;
@@ -290,7 +382,7 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
       })
     );
 
-    // VP awards (simple placeholders; tune later)
+    // VP awards (same as before)
     setVP((prev) => {
       let add = 0;
       if (action === "Build") add = VP_REWARD.Build;
@@ -299,7 +391,6 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
       else if (action === "Colonize") {
         const was = target.colonization?.progress ?? 0;
         const need = target.colonization?.required ?? 0;
-        // if this click completes colonization, award completion VP
         if (was + 1 >= need && need > 0) add = VP_REWARD.ColonizeComplete;
       }
 
@@ -308,11 +399,21 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
       return next;
     });
 
+    // Action log
     setLog((L) => [
-      { country: actor, action, targetId: target.id, targetName: target.name, ts: Date.now() },
+      {
+        country: actor,
+        action,
+        targetId: target.id,
+        targetName: target.name,
+        ts: Date.now(),
+        note:
+          action === "Operate" ? "Bought inputs and sold outputs (market adjusted)." : undefined,
+      },
       ...L,
     ]);
 
+    // Finish action
     setPendingAction(null);
     setCurrentIndex((i) => nextActiveIndex(i));
   }
