@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { ChevronRight, Globe2, Flag, History, Crown, Check, XCircle, Coins } from "lucide-react";
+import { ChevronRight, Globe2, Flag, History, Crown, XCircle, Coins } from "lucide-react";
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
@@ -90,8 +90,9 @@ function closestIndex(ladder: readonly number[], target: number) {
 
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const ACTIONS = ["Build", "Operate", "Trade", "Colonize", "Campaign", "Pass"] as const;
+const ACTIONS = ["Build", "Operate", "Colonize", "Campaign", "Pass"] as const;
 type ActionType = (typeof ACTIONS)[number];
+
 
 export type GameViewProps = {
   scenarioId: string; // e.g. "1871"
@@ -132,17 +133,6 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
     France: false,
     Russia: false,
     "Austria-Hungary": false,
-  });
-
-  // Track actions used per country for the current round
-  const [usedActions, setUsedActions] = useState<
-    Record<Country, Partial<Record<ActionType, boolean>>>
-  >({
-    Britain: {},
-    "German Empire": {},
-    France: {},
-    Russia: {},
-    "Austria-Hungary": {},
   });
 
   // Assets state
@@ -237,119 +227,70 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
     return i;
   }
 
-  function markActionUsed(c: Country, a: ActionType) {
-    setUsedActions((prev) => ({
-      ...prev,
-      [c]: { ...prev[c], [a]: true },
-    }));
-  }
-
-  function isActionUsed(c: Country, a: ActionType) {
-    return !!usedActions[c]?.[a];
-  }
-
   function everyoneHasPassedIf(actor: Country) {
     return order.every((c) => (c === actor ? true : passed[c]));
   }
 
   // ---------- Action flow ----------
-  function performActionClick(action: ActionType) {
-    if (phase !== "Action") return;
-    const actor = currentCountry;
+function performActionClick(action: ActionType) {
+  if (phase !== "Action") return;
+  const actor = currentCountry;
 
-    // Prevent double-usage within the same round
-    if (action !== "Pass" && isActionUsed(actor, action)) return;
-
-    // Immediate actions
-    if (action === "Pass") {
-      setPassed((p) => ({ ...p, [actor]: true }));
-      setLog((L) => [
-        { round, country: actor, action, ts: Date.now(), note: "Passed for the round" },
-        ...L,
-      ]);
-
-      if (everyoneHasPassedIf(actor)) {
-        setPhase("Events");
-        return;
-      }
-
-      setCurrentIndex((i) => nextActiveIndex(i));
-      return;
-    }
-
-    if (action === "Trade") {
-      markActionUsed(actor, action);
-      setLog((L) => [
-        { round, country: actor, action, ts: Date.now(), note: "Traded on the world market" },
-        ...L,
-      ]);
-      setCurrentIndex((i) => nextActiveIndex(i));
-      return;
-    }
-
-    // Asset-targeted actions: Build, Operate, Colonize, Campaign
-    setPendingAction(action);
-  }
-
-  function finalizeAssetAction(action: Exclude<ActionType, "Pass" | "Trade">, target: AssetType) {
-    const actor = currentCountry;
-    // Apply very simple effects for now
-    setAssets((prev) => {
-      return prev.map((a) => {
-        if (a.id !== target.id) return a;
-        if (action === "Build") {
-          // Claim planned asset and make it operational
-          return {
-            ...a,
-            owner: actor,
-            status: "Operational",
-            level: a.level > 0 ? a.level : 1,
-          } as AssetType;
-        }
-        if (action === "Operate") {
-          // No economy yet; just a placeholder (could boost prestige slightly later)
-          return a;
-        }
-        if (action === "Colonize") {
-          if (a.colonization) {
-            const next = a.colonization.progress + 1;
-            const complete = next >= a.colonization.required;
-            return {
-              ...a,
-              owner: complete ? actor : a.owner,
-              status: complete ? "Operational" : a.status,
-              colonization: {
-                ...a.colonization,
-                progress: Math.min(next, a.colonization.required),
-              },
-            } as AssetType;
-          }
-          return a;
-        }
-        if (action === "Campaign") {
-          // Transfer ownership; mark as damaged? keep simple for now
-          return { ...a, owner: actor } as AssetType;
-        }
-        return a;
-      });
-    });
-
-    markActionUsed(actor, action);
+  if (action === "Pass") {
+    setPassed((p) => ({ ...p, [actor]: true }));
     setLog((L) => [
-      {
-        round,
-        country: actor,
-        action,
-        targetId: target.id,
-        targetName: target.name,
-        ts: Date.now(),
-      },
+      { round, country: actor, action, ts: Date.now(), note: "Passed for the round" },
       ...L,
     ]);
-
-    setPendingAction(null);
+    if (everyoneHasPassedIf(actor)) { setPhase("Events"); return; }
     setCurrentIndex((i) => nextActiveIndex(i));
+    return;
   }
+
+  // Asset-targeted actions: Build, Operate, Colonize, Campaign
+  setPendingAction(action);
+}
+
+
+  function finalizeAssetAction(action: Exclude<ActionType, "Pass">, target: AssetType) {
+  const actor = currentCountry;
+
+  setAssets((prev) =>
+    prev.map((a) => {
+      if (a.id !== target.id) return a;
+
+      if (action === "Build") {
+        return { ...a, owner: actor, status: "Operational", level: a.level > 0 ? a.level : 1 };
+      }
+      if (action === "Operate") {
+        return a; // placeholder
+      }
+      if (action === "Colonize" && a.colonization) {
+        const next = a.colonization.progress + 1;
+        const complete = next >= a.colonization.required;
+        return {
+          ...a,
+          owner: complete ? actor : a.owner,
+          status: complete ? "Operational" : a.status,
+          colonization: { ...a.colonization, progress: Math.min(next, a.colonization.required) },
+        };
+      }
+      if (action === "Campaign") {
+        return { ...a, owner: actor };
+      }
+      return a;
+    })
+  );
+
+  setLog((L) => [
+    { round, country: actor, action, targetId: target.id, targetName: target.name, ts: Date.now() },
+    ...L,
+  ]);
+
+  setPendingAction(null);
+  setCurrentIndex((i) => nextActiveIndex(i));
+}
+
 
   function startNextRound() {
     // Reset passes and used actions; bump round; go back to Action
@@ -359,13 +300,6 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
       France: false,
       Russia: false,
       "Austria-Hungary": false,
-    });
-    setUsedActions({
-      Britain: {},
-      "German Empire": {},
-      France: {},
-      Russia: {},
-      "Austria-Hungary": {},
     });
     setRound((r) => r + 1);
     setPhase("Action");
@@ -420,12 +354,12 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
           <EventsPanel onNextRound={startNextRound} round={round} />
         ) : pendingAction ? (
           <AssetPickerPanel
-            action={pendingAction as Exclude<ActionType, "Pass" | "Trade">}
+            action={pendingAction as Exclude<ActionType, "Pass">}
             assets={eligibleAssets}
             actor={currentCountry} // <-- add this
             onCancel={() => setPendingAction(null)}
             onChoose={(asset) =>
-              finalizeAssetAction(pendingAction as Exclude<ActionType, "Pass" | "Trade">, asset)
+              finalizeAssetAction(pendingAction as Exclude<ActionType, "Pass">, asset)
             }
           />
         ) : (
@@ -438,9 +372,9 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
             disabled={phase !== "Action" || passed[currentCountry]}
             current={currentCountry}
             onPick={performActionClick}
-            used={usedActions[currentCountry]}
             isHuman={currentCountry === selectedCountry}
           />
+
 
           <TurnOrderPanel
             order={order}
@@ -627,56 +561,38 @@ function ActionsPanel({
   current,
   onPick,
   disabled,
-  used,
   isHuman,
 }: {
   current: Country;
   onPick: (a: ActionType) => void;
   disabled: boolean;
-  used?: Partial<Record<ActionType, boolean>>;
   isHuman: boolean;
 }) {
-  const actions: ActionType[] = ["Build", "Operate", "Trade", "Colonize", "Campaign", "Pass"];
+  const actions: ActionType[] = ["Build", "Operate", "Colonize", "Campaign", "Pass"];
 
   return (
     <Card className="shadow-sm xl:h-[calc(100vh-96px)]">
       <CardHeader className="pb-2">
         <CardTitle>Choose Action</CardTitle>
         <CardDescription>
-          {isHuman ? (
-            <>
-              Your turn as <span className="font-medium">{current}</span>
-            </>
-          ) : (
-            <>
-              Acting for <span className="font-medium">{current}</span> (AI TBD)
-            </>
-          )}
+          {isHuman ? <>Your turn as <span className="font-medium">{current}</span></>
+                   : <>Acting for <span className="font-medium">{current}</span> (AI TBD)</>}
         </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-3">
-          {actions.map((a) => {
-            const isUsed = (used && used[a]) ?? false;
-            const isDisabled = disabled || (a !== "Pass" && isUsed);
-            return (
-              <Button
-                key={a}
-                variant={a === "Pass" ? "secondary" : isUsed ? "outline" : "default"}
-                className="h-12 rounded-2xl justify-between"
-                onClick={() => onPick(a)}
-                disabled={isDisabled}
-                title={isUsed && a !== "Pass" ? "Already used this round" : undefined}
-              >
-                <span>{a}</span>
-                {isUsed && a !== "Pass" ? (
-                  <Check className="h-4 w-4" />
-                ) : (
-                  <ChevronRight className="h-4 w-4" />
-                )}
-              </Button>
-            );
-          })}
+          {actions.map((a) => (
+            <Button
+              key={a}
+              variant={a === "Pass" ? "secondary" : "default"}
+              className="h-12 rounded-2xl justify-between"
+              onClick={() => onPick(a)}
+              disabled={disabled}
+            >
+              <span>{a}</span>
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          ))}
         </div>
         {disabled && (
           <div className="text-xs text-slate-500 mt-3">
@@ -687,6 +603,7 @@ function ActionsPanel({
     </Card>
   );
 }
+
 
 // --- Events Placeholder ---
 function EventsPanel({ onNextRound, round }: { onNextRound: () => void; round: number }) {
