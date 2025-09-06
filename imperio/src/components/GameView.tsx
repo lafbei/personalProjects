@@ -10,8 +10,6 @@ import { MOCK_ASSETS } from "../../data/mock_assets";
 // --- Types ---
 export type Country = "France" | "Britain" | "Russia" | "Austria-Hungary" | "German Empire";
 
-type Phase = "Action" | "Events";
-
 // ---- Integer market types ----
 type MarketGoodKey =
   | "Grain"
@@ -121,7 +119,6 @@ const countryFlag: Record<Country, string> = {
 // --- Main Component ---
 export default function GameView({ scenarioId, selectedCountry, onExit }: GameViewProps) {
   const [round, setRound] = useState(1);
-  const [phase, setPhase] = useState<Phase>("Action");
   // controls the Action Log overlay
   const [showLog, setShowLog] = useState(false);
 
@@ -184,10 +181,11 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
-  // Reset currentIndex when round or phase changes back to Action
+  // Reset currentIndex when round changes
   React.useEffect(() => {
-    if (phase === "Action") setCurrentIndex(0);
-  }, [phase, round]);
+    setCurrentIndex(0);
+  }, [round]);
+
 
   const [log, setLog] = useState<
     {
@@ -233,7 +231,6 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
 
   // ---------- Action flow ----------
 function performActionClick(action: ActionType) {
-  if (phase !== "Action") return;
   const actor = currentCountry;
 
   if (action === "Pass") {
@@ -242,7 +239,12 @@ function performActionClick(action: ActionType) {
       { round, country: actor, action, ts: Date.now(), note: "Passed for the round" },
       ...L,
     ]);
-    if (everyoneHasPassedIf(actor)) { setPhase("Events"); return; }
+
+    if (everyoneHasPassedIf(actor)) {
+      startNextRound();      // ⬅️ go straight to the next round
+      return;
+    }
+
     setCurrentIndex((i) => nextActiveIndex(i));
     return;
   }
@@ -250,6 +252,7 @@ function performActionClick(action: ActionType) {
   // Asset-targeted actions: Build, Operate, Colonize, Campaign
   setPendingAction(action);
 }
+
 
 
   function finalizeAssetAction(action: Exclude<ActionType, "Pass">, target: AssetType) {
@@ -293,18 +296,17 @@ function performActionClick(action: ActionType) {
 
 
   function startNextRound() {
-    // Reset passes and used actions; bump round; go back to Action
-    setPassed({
-      Britain: false,
-      "German Empire": false,
-      France: false,
-      Russia: false,
-      "Austria-Hungary": false,
-    });
-    setRound((r) => r + 1);
-    setPhase("Action");
-    setPendingAction(null);
-  }
+  setPassed({
+    Britain: false,
+    "German Empire": false,
+    France: false,
+    Russia: false,
+    "Austria-Hungary": false,
+  });
+  setRound((r) => r + 1);
+  setPendingAction(null);
+}
+
 
   // Eligible assets for the currently pending action
   const eligibleAssets: AssetType[] = useMemo(() => {
@@ -339,20 +341,16 @@ function performActionClick(action: ActionType) {
         <TopBar
           scenarioId={scenarioId}
           round={round}
-          phase={phase}
-        current={currentCountry}
-        onOpenLog={() => setShowLog(true)} // <-- add this
-        onExit={onExit}
-      />
+          current={currentCountry}
+          onExit={onExit}
+        />
 
       <div className="grid grid-cols-1 xl:grid-cols-[320px_minmax(0,1fr)_360px] gap-4 p-4">
         {/* Left: Turn Order & Prestige */}
         <WorldMarketPanel rows={marketRows} />
 
         {/* Center: Either Action Log, Events, or Asset Picker */}
-        {phase === "Events" ? (
-          <EventsPanel onNextRound={startNextRound} round={round} />
-        ) : pendingAction ? (
+        {pendingAction ? (
           <AssetPickerPanel
             action={pendingAction as Exclude<ActionType, "Pass">}
             assets={eligibleAssets}
@@ -369,7 +367,7 @@ function performActionClick(action: ActionType) {
         {/* Right: Actions */}
         <div className="space-y-4 xl:h-[calc(100vh-96px)]">
           <ActionsPanel
-            disabled={phase !== "Action" || passed[currentCountry]}
+            disabled={passed[currentCountry]}
             current={currentCountry}
             onPick={performActionClick}
             isHuman={currentCountry === selectedCountry}
@@ -395,16 +393,12 @@ function performActionClick(action: ActionType) {
 function TopBar({
   scenarioId,
   round,
-  phase,
   current,
-  onOpenLog, // <-- add
   onExit,
 }: {
   scenarioId: string;
   round: number;
-  phase: Phase;
   current: Country;
-  onOpenLog: () => void; // <-- add
   onExit?: () => void;
 }) {
   return (
@@ -419,7 +413,7 @@ function TopBar({
               Scenario {scenarioId}
             </div>
             <div className="text-base font-semibold flex items-center gap-2">
-              <Globe2 className="h-4 w-4" /> Round {round} • {phase} Phase
+              <Globe2 className="h-4 w-4" /> Round {round}
             </div>
           </div>
         </div>
@@ -434,10 +428,6 @@ function TopBar({
             </CardContent>
           </Card>
 
-          <Button variant="outline" onClick={onOpenLog} className="rounded-2xl">
-            Action log
-          </Button>
-
           {onExit && (
             <Button variant="destructive" onClick={onExit} className="rounded-2xl">
               Exit
@@ -448,6 +438,7 @@ function TopBar({
     </div>
   );
 }
+
 
 // --- Left: Turn Order ---
 function TurnOrderPanel({
@@ -604,26 +595,6 @@ function ActionsPanel({
   );
 }
 
-
-// --- Events Placeholder ---
-function EventsPanel({ onNextRound, round }: { onNextRound: () => void; round: number }) {
-  return (
-    <Card className="shadow-sm xl:h-[calc(100vh-96px)] grid place-items-center text-center">
-      <CardHeader>
-        <CardTitle>Events Phase</CardTitle>
-        <CardDescription>We’ll add event draws and resolutions here.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="text-sm text-slate-600 mb-4">
-          All countries have passed in Round {round}.
-        </div>
-        <Button onClick={onNextRound} className="rounded-2xl">
-          Start Next Round
-        </Button>
-      </CardContent>
-    </Card>
-  );
-}
 
 function ActionLogOverlay({
   log,
