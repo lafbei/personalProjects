@@ -160,26 +160,25 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
 
   type GoldMap = Record<Country, number>;
 
-const [gold, setGold] = useState<GoldMap>({
-  Britain: 100,
-  "German Empire": 100,
-  France: 100,
-  Russia: 100,
-  "Austria-Hungary": 100,
-});
+  const [gold, setGold] = useState<GoldMap>({
+    Britain: 100,
+    "German Empire": 100,
+    France: 100,
+    Russia: 100,
+    "Austria-Hungary": 100,
+  });
 
-// Simple helpers you can call from actions later
-function earnGold(c: Country, amount: number) {
-  if (amount <= 0) return;
-  setGold((prev) => ({ ...prev, [c]: prev[c] + amount }));
-}
-function spendGold(c: Country, amount: number): boolean {
-  if (amount <= 0) return true;
-  if (gold[c] < amount) return false;
-  setGold((prev) => ({ ...prev, [c]: prev[c] - amount }));
-  return true;
-}
-
+  // Simple helpers you can call from actions later
+  function earnGold(c: Country, amount: number) {
+    if (amount <= 0) return;
+    setGold((prev) => ({ ...prev, [c]: prev[c] + amount }));
+  }
+  function spendGold(c: Country, amount: number): boolean {
+    if (amount <= 0) return true;
+    if (gold[c] < amount) return false;
+    setGold((prev) => ({ ...prev, [c]: prev[c] - amount }));
+    return true;
+  }
 
   // Market state: indices on the 10-step ladders (integers everywhere)
   const [market, setMarket] = useState<MarketState>(() => {
@@ -385,9 +384,13 @@ function TopBar({
             <div className="text-base font-semibold flex items-center gap-2">
               <Globe2 className="h-4 w-4" />
               {winner ? (
-                <>Winner: <span className="font-bold">{winner}</span></>
+                <>
+                  Winner: <span className="font-bold">{winner}</span>
+                </>
               ) : (
-                <>First to <span className="font-bold">100 VP</span> wins</>
+                <>
+                  First to <span className="font-bold">100 VP</span> wins
+                </>
               )}
             </div>
           </div>
@@ -401,9 +404,12 @@ function TopBar({
                 <span className="text-base">{countryFlag[current]}</span> {current}
               </div>
               <div className="mt-1 text-sm flex items-center gap-4">
-                <span className="text-slate-600">VP: <span className="tabular-nums font-semibold">{vp[current]}</span></span>
+                <span className="text-slate-600">
+                  VP: <span className="tabular-nums font-semibold">{vp[current]}</span>
+                </span>
                 <span className="text-slate-600 flex items-center gap-1">
-                  <Coins className="h-4 w-4" /> <span className="tabular-nums font-semibold">{gold[current]}</span>
+                  <Coins className="h-4 w-4" />{" "}
+                  <span className="tabular-nums font-semibold">{gold[current]}</span>
                 </span>
               </div>
             </CardContent>
@@ -419,7 +425,6 @@ function TopBar({
     </div>
   );
 }
-
 
 // --- Left: Turn Order ---
 function TurnOrderPanel({ order, current, vp }: { order: Country[]; current: Country; vp: VPMap }) {
@@ -648,10 +653,10 @@ function AssetsPanel({
   // Helper: wire only the active action to each card
   const callbacksFor = (a: AssetType) => {
     if (!pendingAction) return {};
-    if (pendingAction === "Build")     return { onBuild:    () => onChoose("Build", a) };
-    if (pendingAction === "Operate")   return { onOperate:  () => onChoose("Operate", a) };
-    if (pendingAction === "Colonize")  return { onColonize: () => onChoose("Colonize", a) };
-    if (pendingAction === "Campaign")  return { onConquer:  () => onChoose("Campaign", a) };
+    if (pendingAction === "Build") return { onBuild: () => onChoose("Build", a) };
+    if (pendingAction === "Operate") return { onOperate: () => onChoose("Operate", a) };
+    if (pendingAction === "Colonize") return { onColonize: () => onChoose("Colonize", a) };
+    if (pendingAction === "Campaign") return { onConquer: () => onChoose("Campaign", a) };
     return {};
   };
 
@@ -660,9 +665,7 @@ function AssetsPanel({
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle>
-              {pendingAction ? `Select target for ${pendingAction}` : "Assets"}
-            </CardTitle>
+            <CardTitle>{pendingAction ? `Select target for ${pendingAction}` : "Assets"}</CardTitle>
             <CardDescription>
               {pendingAction
                 ? "Choose an eligible asset to proceed."
@@ -685,12 +688,7 @@ function AssetsPanel({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {mine.map((a) => (
-                  <AssetCard
-                    key={a.id}
-                    asset={a}
-                    currentCountry={actor}
-                    {...callbacksFor(a)}
-                  />
+                  <AssetCard key={a.id} asset={a} currentCountry={actor} {...callbacksFor(a)} />
                 ))}
               </div>
             </section>
@@ -701,12 +699,7 @@ function AssetsPanel({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 {world.map((a) => (
-                  <AssetCard
-                    key={a.id}
-                    asset={a}
-                    currentCountry={actor}
-                    {...callbacksFor(a)}
-                  />
+                  <AssetCard key={a.id} asset={a} currentCountry={actor} {...callbacksFor(a)} />
                 ))}
               </div>
             </section>
@@ -716,4 +709,3 @@ function AssetsPanel({
     </Card>
   );
 }
-
