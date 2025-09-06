@@ -44,6 +44,8 @@ const countryFlag: Record<Country, string> = {
 export default function GameView({ scenarioId, selectedCountry, onExit }: GameViewProps) {
   const [round, setRound] = useState(1);
   const [phase, setPhase] = useState<Phase>("Action");
+  // controls the Action Log overlay
+  const [showLog, setShowLog] = useState(false);
 
   const [prestige] = useState<Record<Country, number>>(INITIAL_PRESTIGE);
   const [passed, setPassed] = useState<Record<Country, boolean>>({
@@ -74,7 +76,7 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
   // Order is by ascending prestige at the START of a round
   const order = useMemo<Country[]>(() => {
     return (Object.keys(prestige) as Country[]).sort((a, b) => prestige[a] - prestige[b]);
-  }, [prestige, round]);
+  }, [prestige]);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -96,6 +98,19 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
   >([]);
 
   const currentCountry = order[currentIndex];
+
+  function WorldMapPanel() {
+    return (
+      <div className="aspect-[16/10] xl:aspect-auto h-full">
+        <div className="h-full grid place-items-center bg-gradient-to-br from-slate-100 to-slate-200 rounded-xl border text-slate-500">
+          <div className="text-center p-6">
+            <div className="text-sm">Map Placeholder</div>
+            <div className="text-xs">Hook up your map tiles / vector layers here.</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   function nextActiveIndex(from: number): number {
     if (order.length === 0) return 0;
@@ -271,12 +286,14 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
   }, [pendingAction, assets, currentIndex]);
 
   return (
-    <div className="h-full w-full bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900">
-      <TopBar
-        scenarioId={scenarioId}
-        round={round}
-        phase={phase}
+    <>
+      <div className="h-full w-full bg-gradient-to-b from-slate-50 to-slate-100 text-slate-900">
+        <TopBar
+          scenarioId={scenarioId}
+          round={round}
+          phase={phase}
         current={currentCountry}
+        onOpenLog={() => setShowLog(true)} // <-- add this
         onExit={onExit}
       />
 
@@ -298,10 +315,12 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
             assets={eligibleAssets}
             actor={currentCountry} // <-- add this
             onCancel={() => setPendingAction(null)}
-            onChoose={(asset) => finalizeAssetAction(pendingAction as Exclude<ActionType, "Pass" | "Trade">, asset)}
+            onChoose={(asset) =>
+              finalizeAssetAction(pendingAction as Exclude<ActionType, "Pass" | "Trade">, asset)
+            }
           />
         ) : (
-          <ActionLogPanel log={log} />
+          <WorldMapPanel />
         )}
 
         {/* Right: Actions */}
@@ -314,6 +333,8 @@ export default function GameView({ scenarioId, selectedCountry, onExit }: GameVi
         />
       </div>
     </div>
+    {showLog && <ActionLogOverlay log={log} onClose={() => setShowLog(false)} />}
+</>
   );
 }
 
@@ -323,12 +344,14 @@ function TopBar({
   round,
   phase,
   current,
+  onOpenLog, // <-- add
   onExit,
 }: {
   scenarioId: string;
   round: number;
   phase: Phase;
   current: Country;
+  onOpenLog: () => void; // <-- add
   onExit?: () => void;
 }) {
   return (
@@ -357,6 +380,10 @@ function TopBar({
               </div>
             </CardContent>
           </Card>
+
+          <Button variant="outline" onClick={onOpenLog} className="rounded-2xl">
+            Action log
+          </Button>
 
           {onExit && (
             <Button variant="destructive" onClick={onExit} className="rounded-2xl">
@@ -411,63 +438,6 @@ function TurnOrderPanel({
                   className={`text-xs px-2 py-1 rounded-full ${passed[c] ? "bg-slate-100 text-slate-600" : c === current ? "bg-emerald-100 text-emerald-700" : "bg-slate-50 text-slate-600"}`}
                 >
                   {passed[c] ? "Passed" : c === current ? "Acting" : "Waiting"}
-                </div>
-              </div>
-            ))}
-          </div>
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-}
-
-// --- Center: Action Log ---
-function ActionLogPanel({
-  log,
-}: {
-  log: {
-    round: number;
-    country: Country;
-    action: ActionType;
-    note?: string;
-    ts: number;
-    targetId?: string;
-    targetName?: string;
-  }[];
-}) {
-  return (
-    <Card className="shadow-sm xl:h-[calc(100vh-96px)] overflow-hidden">
-      <CardHeader className="pb-2">
-        <CardTitle className="flex items-center gap-2">
-          <History className="h-5 w-5" /> Action Log
-        </CardTitle>
-        <CardDescription>One action per activation, pass to leave the round</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[620px] pr-2">
-          <div className="space-y-2">
-            {log.length === 0 && (
-              <div className="text-sm text-slate-500">
-                No actions yet. The first player should choose an action.
-              </div>
-            )}
-            {log.map((entry) => (
-              <div key={entry.ts} className="p-3 rounded-2xl border bg-white">
-                <div className="text-sm">
-                  <span className="font-medium">Round {entry.round}</span> •{" "}
-                  <span className="tabular-nums">{new Date(entry.ts).toLocaleTimeString()}</span>
-                </div>
-                <div className="text-base">
-                  <span className="mr-2">{countryFlag[entry.country]}</span>
-                  <span className="font-medium">{entry.country}</span> performed{" "}
-                  <span className="font-semibold">{entry.action}</span>
-                  {entry.targetName ? (
-                    <span>
-                      {" "}
-                      on <span className="font-medium">{entry.targetName}</span>
-                    </span>
-                  ) : null}
-                  {entry.note ? <span className="text-slate-500"> — {entry.note}</span> : null}
                 </div>
               </div>
             ))}
@@ -618,3 +588,76 @@ function EventsPanel({ onNextRound, round }: { onNextRound: () => void; round: n
     </Card>
   );
 }
+
+function ActionLogOverlay({
+  log,
+  onClose,
+}: {
+  log: {
+    round: number;
+    country: Country;
+    action: ActionType;
+    note?: string;
+    ts: number;
+    targetId?: string;
+    targetName?: string;
+  }[];
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-[100] bg-black/40 backdrop-blur-sm p-4 md:p-8"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="mx-auto max-w-3xl">
+        <Card className="shadow-lg">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <History className="h-5 w-5" />
+                <CardTitle>Action Log</CardTitle>
+              </div>
+              <Button variant="ghost" onClick={onClose} className="rounded-2xl" aria-label="Close">
+                <XCircle className="h-5 w-5" />
+              </Button>
+            </div>
+            <CardDescription>One action per activation, pass to leave the round</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ScrollArea className="h-[70vh] pr-2">
+              <div className="space-y-2">
+                {log.length === 0 && (
+                  <div className="text-sm text-slate-500">
+                    No actions yet. The first player should choose an action.
+                  </div>
+                )}
+                {log.map((entry) => (
+                  <div key={entry.ts} className="p-3 rounded-2xl border bg-white">
+                    <div className="text-sm">
+                      <span className="font-medium">Round {entry.round}</span> •{" "}
+                      <span className="tabular-nums">{new Date(entry.ts).toLocaleTimeString()}</span>
+                    </div>
+                    <div className="text-base">
+                      <span className="mr-2">{countryFlag[entry.country]}</span>
+                      <span className="font-medium">{entry.country}</span> performed{" "}
+                      <span className="font-semibold">{entry.action}</span>
+                      {entry.targetName ? (
+                        <span>
+                          {" "}
+                          on <span className="font-medium">{entry.targetName}</span>
+                        </span>
+                      ) : null}
+                      {entry.note ? <span className="text-slate-500"> — {entry.note}</span> : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </ScrollArea>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
