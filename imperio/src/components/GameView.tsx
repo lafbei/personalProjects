@@ -4,7 +4,12 @@ import { ChevronRight, Globe2, Flag, History, XCircle, Coins } from "lucide-reac
 import { Button } from "./ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
 import { ScrollArea } from "./ui/scroll-area";
-import AssetCard, { type Asset as AssetType } from "./Asset";
+import AssetsPanel from "../components/panels/AssetsPanel";
+import BuildOptionsPanel from "../components/panels/BuildOptionsPanel";
+import ColonizeOptionsPanel from "../components/panels/ColonizeOptionsPanel";
+import CampaignOptionsPanel from "../components/panels/CampaignOptionsPanel";
+
+import { type Asset as AssetType } from "./Asset";
 import { STARTING_ASSETS } from "../../data/starting_assets";
 
 // --- Types ---
@@ -328,13 +333,36 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
           {/* Left: Turn Order & Prestige */}
           <WorldMarketPanel rows={marketRows} />
 
-          <AssetsPanel
-            assets={assets}
-            actor={currentCountry}
-            pendingAction={pendingAction}
-            onCancel={() => setPendingAction(null)}
-            onChoose={(action, asset) => finalizeAssetAction(action, asset)}
-          />
+          {pendingAction === null || pendingAction === "Operate" ? (
+            <AssetsPanel
+              assets={assets}
+              actor={currentCountry}
+              pendingAction={pendingAction}
+              onCancel={() => setPendingAction(null)}
+              onChoose={(action, asset) => finalizeAssetAction(action, asset)}
+            />
+          ) : pendingAction === "Build" ? (
+            <BuildOptionsPanel
+              assets={assets}
+              actor={currentCountry}
+              onBack={() => setPendingAction(null)}
+              onChoose={(asset) => finalizeAssetAction("Build", asset)}
+            />
+          ) : pendingAction === "Colonize" ? (
+            <ColonizeOptionsPanel
+              assets={assets}
+              actor={currentCountry}
+              onBack={() => setPendingAction(null)}
+              onChoose={(asset) => finalizeAssetAction("Colonize", asset)}
+            />
+          ) : (
+            <CampaignOptionsPanel
+              assets={assets}
+              actor={currentCountry}
+              onBack={() => setPendingAction(null)}
+              onChoose={(asset) => finalizeAssetAction("Campaign", asset)}
+            />
+          )}
 
           {/* Right: Actions */}
           <div className="space-y-4 xl:h-[calc(100vh-96px)]">
@@ -628,82 +656,6 @@ function WorldMarketPanel({
               ))}
             </tbody>
           </table>
-        </ScrollArea>
-      </CardContent>
-    </Card>
-  );
-}
-
-function AssetsPanel({
-  assets,
-  actor,
-  pendingAction,
-  onCancel,
-  onChoose,
-}: {
-  assets: AssetType[];
-  actor: Country;
-  pendingAction: ActionType | null;
-  onCancel: () => void;
-  onChoose: (action: Exclude<ActionType, "Congress">, a: AssetType) => void;
-}) {
-  const mine = assets.filter((a) => a.owner === actor);
-  const world = assets.filter((a) => a.owner !== actor);
-
-  // Helper: wire only the active action to each card
-  const callbacksFor = (a: AssetType) => {
-    if (!pendingAction) return {};
-    if (pendingAction === "Build") return { onBuild: () => onChoose("Build", a) };
-    if (pendingAction === "Operate") return { onOperate: () => onChoose("Operate", a) };
-    if (pendingAction === "Colonize") return { onColonize: () => onChoose("Colonize", a) };
-    if (pendingAction === "Campaign") return { onConquer: () => onChoose("Campaign", a) };
-    return {};
-  };
-
-  return (
-    <Card className="shadow-sm xl:h-[calc(100vh-96px)] overflow-hidden">
-      <CardHeader className="pb-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <CardTitle>{pendingAction ? `Select target for ${pendingAction}` : "Assets"}</CardTitle>
-            <CardDescription>
-              {pendingAction
-                ? "Choose an eligible asset to proceed."
-                : "Your holdings and other opportunities."}
-            </CardDescription>
-          </div>
-          {pendingAction && (
-            <Button variant="ghost" onClick={onCancel} className="rounded-2xl">
-              <XCircle className="h-5 w-5" />
-            </Button>
-          )}
-        </div>
-      </CardHeader>
-      <CardContent>
-        <ScrollArea className="h-[620px] pr-2">
-          <div className="space-y-6">
-            <section>
-              <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                Your assets ({mine.length})
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {mine.map((a) => (
-                  <AssetCard key={a.id} asset={a} currentCountry={actor} {...callbacksFor(a)} />
-                ))}
-              </div>
-            </section>
-
-            <section>
-              <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                World & neutral ({world.length})
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                {world.map((a) => (
-                  <AssetCard key={a.id} asset={a} currentCountry={actor} {...callbacksFor(a)} />
-                ))}
-              </div>
-            </section>
-          </div>
         </ScrollArea>
       </CardContent>
     </Card>
