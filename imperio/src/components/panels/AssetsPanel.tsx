@@ -1,8 +1,10 @@
+// src/components/panels/AssetsPanel.tsx
 import { Button } from "../ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../ui/card";
 import { ScrollArea } from "../ui/scroll-area";
 import { XCircle } from "lucide-react";
-import AssetCard, { type Asset as AssetType } from "../Asset";
+// ⬇️ make sure this matches your filename: "Assets.tsx"
+import AssetCard, { type Asset as AssetType } from "../../components/Asset";
 import type { Country } from "../GameView";
 
 type ActionType = "Build" | "Operate" | "Colonize" | "Campaign" | "Congress";
@@ -51,9 +53,8 @@ export default function AssetsPanel({
                 key={a.id}
                 asset={a}
                 currentCountry={actor}
-                hideActions={isOperate}
-                selectable={isOperate}
-                onCardClick={isOperate ? () => onChoose("Operate", a) : undefined}
+                // ⬇️ this makes the whole card clickable for Operate
+                {...(isOperate ? { onOperate: () => onChoose("Operate", a) } : {})}
               />
             ))}
             {mine.length === 0 && <div className="text-sm text-slate-500">No assets yet.</div>}

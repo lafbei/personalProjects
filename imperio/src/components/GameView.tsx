@@ -17,20 +17,15 @@ export type Country = "France" | "Britain" | "Russia" | "Austria-Hungary" | "Ger
 
 // ---- Integer market types ----
 type MarketGoodKey =
-  | "Grain"
-  | "Coal"
-  | "Iron"
-  | "Timber"
-  | "Cotton"
-  | "Steel"
-  | "Textiles"
-  | "Artillery";
+  | "Grain" | "Coal" | "Iron" | "Timber" | "Cotton" | "Steel" | "Textiles" | "Artillery"
+  | "Silk" | "Dye" | "Engines" | "Tools" | "Explosives" | "Sulfur" | "Lead" | "Oil"
+  | "Groceries" | "Clothes" | "Furniture";
 
 type MarketGood = {
   key: MarketGoodKey;
-  min: number; // integer
-  base: number; // integer
-  max: number; // integer
+  min: number;   // integer
+  base: number;  // integer
+  max: number;   // integer
   ladder: readonly number[]; // exactly 10 integer steps, ascending, duplicates allowed
 };
 
@@ -92,7 +87,87 @@ const MARKET_GOODS: Record<MarketGoodKey, MarketGood> = {
     max: 30,
     ladder: [10, 12, 14, 16, 18, 20, 22, 24, 26, 30],
   },
+
+  // --- New goods ---
+  Silk: {
+    key: "Silk",
+    min: 6,
+    base: 12,
+    max: 20,
+    ladder: [6, 7, 8, 9, 10, 12, 14, 16, 18, 20],
+  },
+  Dye: {
+    key: "Dye",
+    min: 2,
+    base: 5,
+    max: 10,
+    ladder: [2, 3, 4, 5, 6, 7, 8, 9, 9, 10],
+  },
+  Engines: {
+    key: "Engines",
+    min: 6,
+    base: 14,
+    max: 24,
+    ladder: [6, 8, 10, 12, 14, 16, 18, 20, 22, 24],
+  },
+  Tools: {
+    key: "Tools",
+    min: 3,
+    base: 7,
+    max: 12,
+    ladder: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  },
+  Explosives: {
+    key: "Explosives",
+    min: 8,
+    base: 14,
+    max: 22,
+    ladder: [8, 9, 10, 12, 14, 16, 18, 20, 22, 22],
+  },
+  Sulfur: {
+    key: "Sulfur",
+    min: 2,
+    base: 4,
+    max: 7,
+    ladder: [2, 3, 3, 4, 4, 5, 5, 6, 6, 7],
+  },
+  Lead: {
+    key: "Lead",
+    min: 2,
+    base: 4,
+    max: 7,
+    ladder: [2, 2, 3, 3, 4, 4, 5, 5, 6, 7],
+  },
+  Oil: {
+    key: "Oil",
+    min: 3,
+    base: 7,
+    max: 12,
+    ladder: [3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  },
+  Groceries: {
+    key: "Groceries",
+    min: 2,
+    base: 5,
+    max: 9,
+    ladder: [2, 3, 4, 5, 6, 7, 7, 8, 8, 9],
+  },
+  Clothes: {
+    key: "Clothes",
+    min: 4,
+    base: 8,
+    max: 13,
+    ladder: [4, 5, 6, 7, 8, 9, 10, 11, 12, 13],
+  },
+  Furniture: {
+    key: "Furniture",
+    min: 4,
+    base: 8,
+    max: 14,
+    ladder: [4, 5, 6, 7, 8, 9, 10, 11, 12, 14],
+  },
 };
+
 
 // current market uses an index into the ladder + lastIndex to compute Δ (integer)
 type MarketState = Record<MarketGoodKey, { index: number; lastIndex: number }>;
@@ -109,6 +184,16 @@ function priceOf(key: MarketGoodKey, st: MarketState): number {
 function clampIndex(i: number) {
   return Math.max(0, Math.min(9, i));
 }
+
+// Which goods are bought by households each round?
+const CONSUMER_GOODS: MarketGoodKey[] = ["Groceries", "Clothes", "Furniture"];
+
+// How much demand pressure per full round? (in ladder steps)
+const HOUSEHOLD_DEMAND: Partial<Record<MarketGoodKey, number>> = {
+  Groceries: 2, // staple demand
+  Clothes: 1,
+  Furniture: 1,
+};
 
 // Convert an Asset.production map to MarketGoodKey map (keys match by name)
 function normalizeGoodsMap(map?: Partial<Record<string, number>>): GoodsMap {
@@ -149,6 +234,18 @@ function applyMarketShifts(
     if (!d) continue;
     const cur = next[k];
     next[k] = { index: clampIndex(cur.index + d), lastIndex: cur.index };
+  }
+  return next;
+}
+
+function applyHouseholdDemand(prev: MarketState): MarketState {
+  const next: MarketState = { ...prev };
+  for (const k of CONSUMER_GOODS) {
+    const steps = HOUSEHOLD_DEMAND[k] ?? 0;
+    if (!steps) continue;
+    const cur = next[k];
+    if (!cur) continue; // in case you toggle goods
+    next[k] = { index: clampIndex(cur.index + steps), lastIndex: cur.index };
   }
   return next;
 }
@@ -318,6 +415,7 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
 
   function finalizeAssetAction(action: Exclude<ActionType, "Congress">, target: AssetType) {
     const actor = currentCountry;
+    const willWrap = nextActiveIndex(currentIndex) === 0;
 
     // --- NEW: handle Operate economics & market ---
     if (action === "Operate") {
@@ -360,7 +458,7 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
         if (a.id !== target.id) return a;
 
         if (action === "Build") {
-          return { ...a, owner: actor, status: "Operational", level: a.level > 0 ? a.level : 1 };
+          return { ...a, owner: actor };
         }
         if (action === "Operate") {
           return a; // production handled above
@@ -371,7 +469,6 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
           return {
             ...a,
             owner: complete ? actor : a.owner,
-            status: complete ? "Operational" : a.status,
             colonization: { ...a.colonization, progress: Math.min(next, a.colonization.required) },
           };
         }
@@ -399,6 +496,8 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
       return next;
     });
 
+    const wrapNote = willWrap ? " • Household demand tick applied." : "";
+
     // Action log
     setLog((L) => [
       {
@@ -408,13 +507,18 @@ function nudgePrice(key: MarketGoodKey, steps: number) {
         targetName: target.name,
         ts: Date.now(),
         note:
-          action === "Operate" ? "Bought inputs and sold outputs (market adjusted)." : undefined,
+          action === "Operate"
+            ? `Bought inputs and sold outputs (market adjusted).${wrapNote}`
+            : willWrap ? "Household demand tick applied." : undefined,
       },
       ...L,
     ]);
 
     // Finish action
     setPendingAction(null);
+    if (willWrap) {
+      setMarket((prev) => applyHouseholdDemand(prev));
+    }
     setCurrentIndex((i) => nextActiveIndex(i));
   }
 

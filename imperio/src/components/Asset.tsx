@@ -1,71 +1,40 @@
 // src/components/Assets.tsx
 import React from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card";
-import { Button } from "./ui/button";
 import { Progress } from "./ui/progress";
-import {
-  Factory,
-  Pickaxe,
-  Ship,
-  Wheat,
-  Building2,
-  Castle,
-  MapPinned,
-  Hammer,
-  Swords,
-} from "lucide-react";
+import { Factory as FactoryIcon, Wheat, Sprout } from "lucide-react";
 
 // ---------------- Types ----------------
 export type CountryName = "France" | "Britain" | "Russia" | "Austria-Hungary" | "German Empire";
 
 export type Good =
-  | "Grain"
-  | "Coal"
-  | "Iron"
-  | "Timber"
-  | "Cotton"
-  | "Steel"
-  | "Textiles"
-  | "Artillery";
+  | "Grain" | "Coal" | "Iron" | "Timber" | "Cotton" | "Steel" | "Textiles" | "Artillery"
+  | "Silk" | "Dye" | "Engines" | "Tools" | "Explosives" | "Sulfur" | "Lead" | "Oil"
+  | "Groceries" | "Clothes" | "Furniture";
 
-export type AssetKind = "Factory" | "Mine" | "Plantation" | "Railway" | "Port" | "Colony" | "Fort";
+export type AssetKind = "Factory" | "Plantation" | "Rural";
 
 export type ProductionProfile = {
   inputs?: Partial<Record<Good, number>>;
   outputs?: Partial<Record<Good, number>>;
 };
 
-export type AssetStatus =
-  | "Planned"
-  | "UnderConstruction"
-  | "Operational"
-  | "Damaged"
-  | "Uncontrolled"; // exists on map but not owned/usable
-
 export interface Asset {
   id: string;
   name: string;
   kind: AssetKind;
-  region: string; // e.g. "Alsace", "Bengal", "Ruhr"
   owner: CountryName | null;
-  level: number; // upgrade level / capacity
-  status: AssetStatus;
-  conquerable?: boolean; // default true
-  colonization?: { progress: number; required: number }; // only for kind === "Colony" (or neutral outposts)
-  production?: ProductionProfile; // used by Operate later
+  // removed: region, status, level, upkeep
+  colonization?: { progress: number; required: number }; // for Plantation/Rural when neutral
+  production?: ProductionProfile; // mainly for Factory (but allowed for others)
   buildCost?: Partial<Record<Good, number>>;
-  upkeep?: Partial<Record<Good, number>>;
 }
 
 // --------------- Icons for kinds ---------------
 const KindIcon: Record<AssetKind, React.ReactNode> = {
-  Factory: <Factory className="h-4 w-4" />,
-  Mine: <Pickaxe className="h-4 w-4" />,
+  Factory: <FactoryIcon className="h-4 w-4" />,
   Plantation: <Wheat className="h-4 w-4" />,
-  Railway: <Building2 className="h-4 w-4" />,
-  Port: <Ship className="h-4 w-4" />,
-  Colony: <MapPinned className="h-4 w-4" />,
-  Fort: <Castle className="h-4 w-4" />,
+  Rural: <Sprout className="h-4 w-4" />,
 };
 
 // --------------- Helpers ---------------
@@ -84,40 +53,18 @@ function fmtGoods(record?: Partial<Record<Good, number>>) {
   );
 }
 
-function statusLabel(s: AssetStatus) {
-  switch (s) {
-    case "Planned":
-      return "Planned";
-    case "UnderConstruction":
-      return "Under construction";
-    case "Operational":
-      return "Operational";
-    case "Damaged":
-      return "Damaged";
-    case "Uncontrolled":
-      return "Uncontrolled";
-  }
-}
-
 // --------------- Component ---------------
 export type AssetCardProps = {
   asset: Asset;
   currentCountry: CountryName;
 
-  // Action callbacks (optional; if not provided, button will be disabled/hidden)
+  // Pass exactly ONE of these to make the card clickable for that action
   onBuild?: (id: string) => void;
   onColonize?: (id: string) => void;
   onConquer?: (id: string) => void;
   onOperate?: (id: string) => void;
-  onUpgrade?: (id: string) => void;
 
-  // Optional external disabling (e.g., different action was chosen)
-  disabledReason?: string;
-
-  // NEW: selection-mode helpers (used by AssetsPanel when choosing Operate)
-  hideActions?: boolean; // hide the action buttons row
-  selectable?: boolean; // style as clickable
-  onCardClick?: () => void; // whole-card click handler
+  disabledReason?: string; // disables click
 };
 
 export default function AssetCard({
@@ -127,43 +74,51 @@ export default function AssetCard({
   onColonize,
   onConquer,
   onOperate,
-  onUpgrade,
   disabledReason,
-  hideActions,
-  selectable,
-  onCardClick,
 }: AssetCardProps) {
   const isOwnedByMe = asset.owner === currentCountry;
   const isNeutral = asset.owner === null;
-  const conquerable = asset.conquerable ?? true;
 
-  // Default availability rules (game state can still override by not wiring callbacks)
-  const canBuild = (isOwnedByMe || isNeutral) && asset.status === "Planned" && !!onBuild;
+  // Availability rules with simplified model
+  const canBuild =
+    asset.kind === "Factory" && isNeutral && !!onBuild; // build only unowned factories
+
   const canColonize =
-    asset.kind === "Colony" &&
+    (asset.kind === "Plantation" || asset.kind === "Rural") &&
     isNeutral &&
-    asset.colonization &&
+    !!asset.colonization &&
     asset.colonization.progress < asset.colonization.required &&
     !!onColonize;
-  const canConquer = !!asset.owner && !isOwnedByMe && conquerable && !!onConquer;
-  const canOperate =
-    isOwnedByMe && asset.status === "Operational" && !!asset.production && !!onOperate;
-  const canUpgrade = isOwnedByMe && asset.status === "Operational" && !!onUpgrade;
 
-  const globallyDisabled = !!disabledReason;
-  const clickable = Boolean(selectable && onCardClick);
+  const canConquer =
+    (asset.kind === "Plantation" || asset.kind === "Rural") &&
+    !!asset.owner &&
+    !isOwnedByMe &&
+    !!onConquer;
+
+  const canOperate = isOwnedByMe && !!asset.production && !!onOperate;
+
+  // Card becomes clickable only when exactly one action applies
+  const candidates: Array<() => void> = [];
+  if (canBuild) candidates.push(() => onBuild!(asset.id));
+  if (canColonize) candidates.push(() => onColonize!(asset.id));
+  if (canConquer) candidates.push(() => onConquer!(asset.id));
+  if (canOperate) candidates.push(() => onOperate!(asset.id));
+
+  const clickable = !disabledReason && candidates.length === 1;
+  const handleClick = clickable ? candidates[0] : undefined;
 
   return (
     <Card
       role={clickable ? "button" : undefined}
       tabIndex={clickable ? 0 : undefined}
-      onClick={clickable ? onCardClick : undefined}
+      onClick={handleClick}
       onKeyDown={
         clickable
           ? (e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                onCardClick?.();
+                handleClick?.();
               }
             }
           : undefined
@@ -173,7 +128,9 @@ export default function AssetCard({
         clickable
           ? "cursor-pointer ring-1 ring-slate-200 hover:ring-slate-300 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-slate-400"
           : "",
+        disabledReason ? "opacity-60 pointer-events-none" : "",
       ].join(" ")}
+      title={disabledReason}
     >
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
@@ -182,19 +139,16 @@ export default function AssetCard({
             {asset.name}
             <span className="text-xs text-slate-500">• {asset.kind}</span>
           </CardTitle>
-          <div className="text-xs px-2 py-1 rounded-full bg-slate-100 text-slate-700">
-            Lv {asset.level}
-          </div>
+          {/* removed: Level */}
         </div>
         <CardDescription>
-          <span className="mr-2">Region: {asset.region}</span>
           <span className="mr-2">Owner: {asset.owner ?? "—"}</span>
-          <span>Status: {statusLabel(asset.status)}</span>
+          {/* removed: Region / Status */}
         </CardDescription>
       </CardHeader>
 
       <CardContent className="space-y-3">
-        {/* Production */}
+        {/* Production (shown if present) */}
         {asset.production && (
           <div className="rounded-xl border p-3 bg-white">
             <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Production</div>
@@ -211,28 +165,16 @@ export default function AssetCard({
           </div>
         )}
 
-        {/* Costs */}
-        {(asset.buildCost || asset.upkeep) && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            {asset.buildCost && (
-              <div className="rounded-xl border p-3 bg-white">
-                <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">
-                  Build Cost
-                </div>
-                {fmtGoods(asset.buildCost)}
-              </div>
-            )}
-            {asset.upkeep && (
-              <div className="rounded-xl border p-3 bg-white">
-                <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Upkeep</div>
-                {fmtGoods(asset.upkeep)}
-              </div>
-            )}
+        {/* Build Cost (keep) */}
+        {asset.buildCost && (
+          <div className="rounded-xl border p-3 bg-white">
+            <div className="text-xs uppercase tracking-wide text-slate-500 mb-2">Build Cost</div>
+            {fmtGoods(asset.buildCost)}
           </div>
         )}
 
-        {/* Colonization progress */}
-        {asset.kind === "Colony" && asset.colonization && (
+        {/* Colonization progress (Plantation/Rural) */}
+        {(asset.kind === "Plantation" || asset.kind === "Rural") && asset.colonization && (
           <div className="rounded-xl border p-3 bg-white">
             <div className="flex items-center justify-between mb-2">
               <div className="text-xs uppercase tracking-wide text-slate-500">Colonization</div>
@@ -243,62 +185,7 @@ export default function AssetCard({
             <Progress value={(asset.colonization.progress / asset.colonization.required) * 100} />
           </div>
         )}
-
-        {/* Actions (hidden in selection mode) */}
-        {!hideActions && (
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-            <Button
-              disabled={globallyDisabled || !canBuild}
-              onClick={() => onBuild && onBuild(asset.id)}
-              title={disabledReason || (canBuild ? "Build this asset" : "Can't build now")}
-              className="rounded-2xl"
-            >
-              <Hammer className="h-4 w-4 mr-2" /> Build
-            </Button>
-
-            <Button
-              variant="secondary"
-              disabled={globallyDisabled || !canOperate}
-              onClick={() => onOperate && onOperate(asset.id)}
-              title={disabledReason || (canOperate ? "Operate this asset" : "Can't operate now")}
-              className="rounded-2xl"
-            >
-              <Factory className="h-4 w-4 mr-2" /> Operate
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={globallyDisabled || !canColonize}
-              onClick={() => onColonize && onColonize(asset.id)}
-              title={
-                disabledReason || (canColonize ? "Advance colonization" : "Can't colonize now")
-              }
-              className="rounded-2xl"
-            >
-              <MapPinned className="h-4 w-4 mr-2" /> Colonize
-            </Button>
-
-            <Button
-              variant="destructive"
-              disabled={globallyDisabled || !canConquer}
-              onClick={() => onConquer && onConquer(asset.id)}
-              title={disabledReason || (canConquer ? "Attempt conquest" : "Can't conquer now")}
-              className="rounded-2xl"
-            >
-              <Swords className="h-4 w-4 mr-2" /> Campaign
-            </Button>
-
-            <Button
-              variant="outline"
-              disabled={globallyDisabled || !canUpgrade}
-              onClick={() => onUpgrade && onUpgrade(asset.id)}
-              title={disabledReason || (canUpgrade ? "Upgrade this asset" : "Can't upgrade now")}
-              className="rounded-2xl"
-            >
-              Upgrade
-            </Button>
-          </div>
-        )}
+        {/* No buttons — click-to-act when a single action applies */}
       </CardContent>
     </Card>
   );
